@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Fi PenTest Tool - Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0d1117; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .card { border: none; border-radius: 12px; overflow: hidden; width: 380px; background-color: #161b22; }
+        .card-header { background-color: #0C447C; padding: 28px 32px; }
+        .card-header h5 { color: #E6F1FB; font-weight: 500; margin: 0 0 4px; font-size: 18px; }
+        .card-header p { color: #85B7EB; font-size: 13px; margin: 0; }
+        .card-body { padding: 28px 32px; background-color: #161b22; }
+        .form-label { color: #E6F1FB; font-size: 13px; }
+        .form-control { background-color: #0d1117; border: 1px solid #30363d; color: #E6F1FB; border-radius: 8px; }
+        .form-control:focus { background-color: #0d1117; border-color: #185FA5; box-shadow: 0 0 0 3px rgba(24,95,165,0.25); color: #E6F1FB; }
+        .form-control::placeholder { color: #484f58; }
+        .btn-signin { background-color: #185FA5; color: #E6F1FB; border: none; width: 100%; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 500; }
+        .btn-signin:hover { background-color: #0C447C; color: #E6F1FB; }
+        .footer-note { font-size: 11px; color: #484f58; text-align: center; margin-top: 16px; margin-bottom: 0; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header">
+            <h5>Wi-Fi PenTest Tool</h5>
+            <p>Sign in to administrative account</p>
+        </div>
+        <div class="card-body">
+            {% if error %}
+            <div class="alert alert-danger py-2" style="font-size:13px">{{ error }}</div>
+            {% endif %}
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" name="username" class="form-control" placeholder="Enter username" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                </div>
+                <button type="submit" class="btn-signin">Sign in</button>
+            </form>
+            <p class="footer-note">🔒 Credentials secured with bcrypt hashing</p>
+        </div>
+    </div>
+</body>
+</html>
