@@ -21,52 +21,60 @@
         .stat-number { font-size: 28px; font-weight: 500; color: #85B7EB; }
         .stat-label { font-size: 12px; color: #484f58; margin-top: 4px; }
         .results-card { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
-        .results-header { padding: 16px 20px; border-bottom: 1px solid #30363d; font-size: 14px; font-weight: 500; color: #E6F1FB; }
-        .vuln-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; align-items: center; padding: 14px 20px; border-bottom: 1px solid #30363d; font-size: 13px; }
+        .results-header { padding: 16px 20px; border-bottom: 1px solid #30363d; font-size: 14px; font-weight: 500; }
+        .vuln-row-header { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; padding: 10px 20px; background-color: #0d1117; font-size: 11px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #30363d; }
+        .vuln-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; align-items: center; padding: 14px 20px; border-bottom: 1px solid #30363d; font-size: 13px; }
         .vuln-row:last-child { border-bottom: none; }
-        .vuln-row-header { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; padding: 10px 20px; background-color: #0d1117; font-size: 11px; color: #484f58; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #30363d; }
         .vuln-name { color: #E6F1FB; font-weight: 500; }
         .vuln-desc { color: #484f58; font-size: 11px; margin-top: 3px; }
         .badge-high { background-color: #A32D2D; color: #FCEBEB; padding: 3px 10px; border-radius: 20px; font-size: 11px; display: inline-block; }
         .badge-medium { background-color: #854F0B; color: #FAEEDA; padding: 3px 10px; border-radius: 20px; font-size: 11px; display: inline-block; }
         .badge-low { background-color: #0F6E56; color: #E1F5EE; padding: 3px 10px; border-radius: 20px; font-size: 11px; display: inline-block; }
         .cvss-score { font-size: 16px; font-weight: 500; color: #85B7EB; }
-        .overall-risk { background-color: #161b22; border: 1px solid #A32D2D; border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
+        .overall-risk { background-color: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
         .risk-label { font-size: 13px; color: #484f58; }
-        .risk-value { font-size: 16px; font-weight: 500; color: #E24B4A; }
-        .remediation-note { font-size: 12px; color: #484f58; }
+        .risk-value-high { font-size: 16px; font-weight: 500; color: #E24B4A; }
+        .risk-value-medium { font-size: 16px; font-weight: 500; color: #EF9F27; }
+        .risk-value-low { font-size: 16px; font-weight: 500; color: #1D9E75; }
+        .no-vulns { padding: 40px; text-align: center; color: #484f58; }
     </style>
 </head>
 <body>
-    <!-- Navbar -->
     <nav class="navbar d-flex justify-content-between align-items-center">
         <span class="navbar-brand">Wi-Fi PenTest Tool</span>
         <div class="d-flex gap-3">
             <a href="/dashboard" class="nav-link">Dashboard</a>
-            <a href="/modules" class="nav-link">New Scan</a>
+            <a href="/modules" class="nav-link">New scan</a>
             <a href="/logout" class="nav-link">Logout</a>
         </div>
     </nav>
 
     <div class="main-content">
-        <!-- Header -->
         <div class="page-header">
-            <p class="page-title">Scan results — Scan #003</p>
+            <p class="page-title">Scan results — Scan #{{ scan['scan_id'] }}</p>
             <a href="#" class="btn-download">↓ Download PDF report</a>
         </div>
 
         <!-- Summary stats -->
         <div class="summary-grid">
             <div class="stat-card">
-                <div class="stat-number">3</div>
+                <div class="stat-number">{{ vulns|length }}</div>
                 <div class="stat-label">Vulnerabilities found</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">8.1</div>
+                <div class="stat-number">
+                    {% if vulns %}
+                        {{ vulns|map(attribute='cvss_score')|max|round(1) }}
+                    {% else %}
+                        0
+                    {% endif %}
+                </div>
                 <div class="stat-label">Highest CVSS score</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">2</div>
+                <div class="stat-number">
+                    {{ vulns|selectattr('severity', 'equalto', 'High')|list|length }}
+                </div>
                 <div class="stat-label">High severity</div>
             </div>
         </div>
@@ -74,47 +82,58 @@
         <!-- Vulnerabilities table -->
         <div class="results-card">
             <div class="results-header">Identified vulnerabilities</div>
+            {% if vulns %}
             <div class="vuln-row-header">
                 <span>Vulnerability</span>
                 <span>Severity</span>
                 <span>CVSS score</span>
+                <span>Recommendation</span>
             </div>
+            {% for vuln in vulns %}
             <div class="vuln-row">
                 <div>
-                    <div class="vuln-name">WPA2 weak password</div>
-                    <div class="vuln-desc">Network password susceptible to dictionary-based cracking</div>
+                    <div class="vuln-name">{{ vuln['vuln_type'] }}</div>
+                    <div class="vuln-desc">{{ vuln['description'] }}</div>
                 </div>
-                <span class="badge-high">High</span>
-                <span class="cvss-score">8.1</span>
+                {% if vuln['severity'] == 'High' %}
+                    <span class="badge-high">High</span>
+                {% elif vuln['severity'] == 'Medium' %}
+                    <span class="badge-medium">Medium</span>
+                {% else %}
+                    <span class="badge-low">Low</span>
+                {% endif %}
+                <span class="cvss-score">{{ vuln['cvss_score'] }}</span>
+                <div style="font-size:11px;color:#484f58">{{ vuln['recommendation'] }}</div>
             </div>
-            <div class="vuln-row">
-                <div>
-                    <div class="vuln-name">Open port 22 (SSH)</div>
-                    <div class="vuln-desc">SSH port exposed with no access restrictions</div>
-                </div>
-                <span class="badge-medium">Medium</span>
-                <span class="cvss-score">5.3</span>
+            {% endfor %}
+            {% else %}
+            <div class="no-vulns">
+                <div style="font-size:40px;margin-bottom:12px">✅</div>
+                <div style="font-size:16px;color:#1D9E75;margin-bottom:8px">No vulnerabilities found</div>
+                <div style="font-size:13px">Your network passed all selected security tests</div>
             </div>
-            <div class="vuln-row">
-                <div>
-                    <div class="vuln-name">Deauthentication vulnerability</div>
-                    <div class="vuln-desc">Network susceptible to forged deauth packet attacks</div>
-                </div>
-                <span class="badge-high">High</span>
-                <span class="cvss-score">7.4</span>
-            </div>
+            {% endif %}
         </div>
 
         <!-- Overall risk -->
+        {% if vulns %}
         <div class="overall-risk">
             <div>
                 <div class="risk-label">Overall network risk</div>
-                <div class="risk-value">High risk</div>
+                {% set max_cvss = vulns|map(attribute='cvss_score')|max %}
+                {% if max_cvss >= 7.0 %}
+                    <div class="risk-value-high">High risk</div>
+                {% elif max_cvss >= 4.0 %}
+                    <div class="risk-value-medium">Medium risk</div>
+                {% else %}
+                    <div class="risk-value-low">Low risk</div>
+                {% endif %}
             </div>
-            <div class="remediation-note">
-                Full remediation advice available in the PDF report →
+            <div style="font-size:12px;color:#484f58">
+                Full remediation advice shown above →
             </div>
         </div>
+        {% endif %}
     </div>
 </body>
 </html>

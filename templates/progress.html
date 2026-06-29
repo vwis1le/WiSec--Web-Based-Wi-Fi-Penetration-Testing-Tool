@@ -109,5 +109,18 @@
             View results →
         </a>
     </div>
+    <script>
+    // Check scan status every 3 seconds
+    const checkStatus = setInterval(() => {
+        fetch('/scan_status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'complete') {
+                    clearInterval(checkStatus);
+                    window.location.href = '/results';
+                }
+            });
+    }, 3000);
+    </script>
 </body>
 </html>
