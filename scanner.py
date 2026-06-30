@@ -1,3 +1,4 @@
+from report import generate_report
 import subprocess
 import threading
 from database import get_db
@@ -221,6 +222,13 @@ def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
     db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('complete', scan_id))
     db.commit()
     db.close()
+
+    log(scan_id, 'Generating PDF report...', 'info')
+    try:
+        generate_report(scan_id)
+        log(scan_id, 'Report generated successfully.', 'success')
+    except Exception as e:
+        log(scan_id, f'Report generation failed: {str(e)}', 'error')
 
 def run_scan_background(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
     """Run scan in background thread so Flask stays responsive"""

@@ -52,7 +52,8 @@
     <div class="main-content">
         <div class="page-header">
             <p class="page-title">Scan results — Scan #{{ scan['scan_id'] }}</p>
-            <a href="#" class="btn-download">↓ Download PDF report</a>
+            <a href="/download_report/{{ scan['scan_id'] }}" class="btn-download">↓ Download PDF report</a>
+            <a href="/generate_report/{{ scan['scan_id'] }}" class="btn-download" style="margin-left:8px; background-color:#0C447C;">↻ Regenerate report</a>
         </div>
 
         <!-- Summary stats -->

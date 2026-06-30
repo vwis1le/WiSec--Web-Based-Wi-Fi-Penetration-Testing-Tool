@@ -5,6 +5,10 @@ from scanner import run_scan_background
 import bcrypt
 import socket
 import ipaddress
+from report import generate_report
+from flask import send_file
+import os
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
 
 app = Flask(__name__)
 app.secret_key = 'wifipentool_secret_key'
@@ -176,6 +180,59 @@ def results():
     db.close()
 
     return render_template('results.html', scan=scan, vulns=vulns)
+
+#Report Download
+@app.route('/download_report/<int:scan_id>')
+def download_report(scan_id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    # Verify scan belongs to this user
+    scan = db.execute(
+        'SELECT * FROM scans WHERE scan_id = ? AND user_id = ?',
+        (scan_id, session['user_id'])
+    ).fetchone()
+
+    # Get most recent report for this scan
+    report = db.execute(
+        'SELECT * FROM reports WHERE scan_id = ? ORDER BY generated_at DESC LIMIT 1',
+        (scan_id,)
+    ).fetchone()
+    db.close()
+
+    if not scan or not report:
+        return redirect(url_for('dashboard'))
+
+    return send_file(
+        report['pdf_path'],
+        as_attachment=True,
+        download_name=f'wisec_report_scan{scan_id}.pdf'
+    )
+
+#Report Regeneration
+@app.route('/generate_report/<int:scan_id>')
+def generate_report_route(scan_id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    scan = db.execute(
+        'SELECT * FROM scans WHERE scan_id = ? AND user_id = ?',
+        (scan_id, session['user_id'])
+    ).fetchone()
+    db.close()
+
+    if not scan:
+        return redirect(url_for('dashboard'))
+
+    try:
+        generate_report(scan_id)
+    except Exception as e:
+        print(f'Report generation error: {e}')
+
+    return redirect(url_for('results', scan_id=scan_id))
+
 
 # Logout route
 @app.route('/logout')

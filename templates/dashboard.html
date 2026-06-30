@@ -17,8 +17,9 @@
         .card-header-title { font-size: 14px; font-weight: 500; color: #E6F1FB; padding: 16px 20px; border-bottom: 1px solid #30363d; }
         .scan-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid #30363d; font-size: 13px; }
         .scan-row:last-child { border-bottom: none; }
-        .scan-id { color: #85B7EB; font-weight: 500; }
-        .scan-date { color: #484f58; }
+        .scan-id { color: #85B7EB; font-weight: 500; min-width: 80px;  }
+        .scan-date { color: #A0ADB8; min-width: 160px; }
+        .scan-modules { color: #C0CDD8; flex: 1; padding: 0 16px; }
         .badge-complete { background-color: #0F6E56; color: #E1F5EE; padding: 3px 10px; border-radius: 20px; font-size: 11px; }
         .badge-progress { background-color: #854F0B; color: #FAEEDA; padding: 3px 10px; border-radius: 20px; font-size: 11px; }
         .btn-new-scan { background-color: #185FA5; color: #E6F1FB; border: none; width: 100%; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 500; margin-top: 20px; text-decoration: none; display: block; text-align: center; }
@@ -64,7 +65,7 @@
                 <a href="/results?scan_id={{ scan['scan_id'] }}" class="scan-row" style="text-decoration:none; color:inherit;">
                     <span class="scan-id">Scan #{{ scan['scan_id'] }}</span>
                     <span class="scan-date">{{ scan['timestamp'] }}</span>
-                    <span>{{ scan['modules_run'] }}</span>
+                    <span class="scan-modules">{{ scan['modules_run'] }}</span>
                     {% if scan['status'] == 'complete' %}
                         <span class="badge-complete">Complete</span>
                     {% else %}
