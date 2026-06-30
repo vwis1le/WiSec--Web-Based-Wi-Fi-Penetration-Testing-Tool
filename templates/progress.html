@@ -86,23 +86,8 @@
         <!-- Terminal output -->
         <div class="progress-card">
             <div class="phase-label" style="margin-bottom:12px">Live terminal output</div>
-            <div class="terminal" id="terminal">
-                <div class="log-success">[+] Starting Nmap reconnaissance scan...</div>
-                <div class="log-success">[+] Target network: 192.168.1.0/24</div>
-                <div class="log-success">[+] Discovered 4 active hosts</div>
-                <div class="log-info">[*] Host: 192.168.1.1 — Router (gateway)</div>
-                <div class="log-info">[*] Host: 192.168.1.10 — Kali Linux machine</div>
-                <div class="log-info">[*] Host: 192.168.1.20 — Victim VM</div>
-                <div class="log-success">[+] Phase 1 Reconnaissance complete</div>
-                <div class="log-success">[+] Starting Phase 2: Scanning...</div>
-                <div class="log-info">[*] Running Nmap port scan...</div>
-                <div class="log-info">[*] Open ports found: 22 (SSH), 80 (HTTP), 443 (HTTPS)</div>
-                <div class="log-warning">[~] Starting Wireshark traffic capture...</div>
-                <div class="log-warning">[~] Capturing packets on interface wlan0...</div>
-                <span class="cursor"></span>
-            </div>
+            <div class="terminal" id="terminal"></div>
         </div>
-    </div>
     <!-- Temporary button to navigate to results — will be automatic once scanner is hooked up -->
     <div style="margin-top: 20px;">
         <a href="/results" class="btn-run text-decoration-none d-block text-center" style="background-color:#185FA5; color:#E6F1FB; border:none; padding:12px; border-radius:8px; font-size:14px; font-weight:500;">

@@ -58,26 +58,26 @@
     </div>
 
         <div class="card">
-    <div class="card-header-title">Recent scans</div>
-        {% if scans %}
-            {% for scan in scans %}
-            <div class="scan-row">
-                <span class="scan-id">Scan #{{ scan['scan_id'] }}</span>
-                <span class="scan-date">{{ scan['timestamp'] }}</span>
-                <span>{{ scan['modules_run'] }}</span>
-                {% if scan['status'] == 'complete' %}
-                    <span class="badge-complete">Complete</span>
-                {% else %}
-                    <span class="badge-progress">{{ scan['status'] }}</span>
-                {% endif %}
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="scan-row">
-                <span style="color:#484f58">No scans yet — start your first scan below</span>
-            </div>
-        {% endif %}
-    </div>
+            <div class="card-header-title">Recent scans</div>
+            {% if scans %}
+                {% for scan in scans %}
+                <a href="/results?scan_id={{ scan['scan_id'] }}" class="scan-row" style="text-decoration:none; color:inherit;">
+                    <span class="scan-id">Scan #{{ scan['scan_id'] }}</span>
+                    <span class="scan-date">{{ scan['timestamp'] }}</span>
+                    <span>{{ scan['modules_run'] }}</span>
+                    {% if scan['status'] == 'complete' %}
+                        <span class="badge-complete">Complete</span>
+                    {% else %}
+                        <span class="badge-progress">{{ scan['status'] }}</span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            {% else %}
+                <div class="scan-row">
+                    <span style="color:#484f58">No scans yet — start your first scan below</span>
+                </div>
+            {% endif %}
+        </div>
 
         <a href="/modules" class="btn-new-scan">+ Start new scan</a>
     </div>

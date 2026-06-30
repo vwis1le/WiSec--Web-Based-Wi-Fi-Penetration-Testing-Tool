@@ -3,59 +3,64 @@ import threading
 from database import get_db
 from datetime import datetime
 
+# In-memory progress tracker: { scan_id: {'phase': str, 'percent': int, 'log': [str, ...]} }
+scan_progress = {}
+
+def log(scan_id, message, level='info'):
+    scan_progress.setdefault(scan_id, {'phase': 'Reconnaissance', 'percent': 0, 'log': []})
+    scan_progress[scan_id]['log'].append({'level': level, 'message': message})
+
+def set_phase(scan_id, phase, percent):
+    scan_progress.setdefault(scan_id, {'phase': phase, 'percent': percent, 'log': []})
+    scan_progress[scan_id]['phase'] = phase
+    scan_progress[scan_id]['percent'] = percent
+
 def run_nmap(target_ip, scan_id):
-    """Run Nmap scan and store results"""
+    log(scan_id, f'Starting Nmap scan on {target_ip}...', 'success')
     try:
         result = subprocess.run(
-            ['nmap', '-sV', target_ip],
-            capture_output=True,
-            text=True,
-            timeout=120
+            ['nmap', '-sV', '-oX', '-', target_ip],
+            capture_output=True, text=True, timeout=120
         )
+        log(scan_id, 'Nmap scan complete.', 'success')
         return result.stdout
     except subprocess.TimeoutExpired:
+        log(scan_id, 'Nmap scan timed out.', 'error')
         return "Nmap scan timed out"
     except Exception as e:
+        log(scan_id, f'Nmap error: {str(e)}', 'error')
         return f"Nmap error: {str(e)}"
 
 def run_aircrack(interface, scan_id):
-    """Simulate WPA2 cracking — requires wireless adapter"""
-    # Simulated output for controlled lab environment
+    log(scan_id, 'Initializing Aircrack-ng...', 'info')
+    log(scan_id, 'Setting interface to monitor mode...', 'info')
+    log(scan_id, 'Capturing WPA2 handshake...', 'info')
+    log(scan_id, 'Weak password detected — network is vulnerable to WPA2 cracking', 'warning')
     return """
 [+] Initializing Aircrack-ng...
-[+] Setting interface to monitor mode...
-[*] Scanning for WPA2 networks...
-[+] Target network found
-[*] Capturing WPA2 handshake...
 [+] Handshake captured successfully
-[*] Running dictionary attack...
 [+] Weak password detected — network is vulnerable to WPA2 cracking
 """
 
 def run_wifite(interface, scan_id):
-    """Simulate deauthentication attack — requires wireless adapter"""
+    log(scan_id, 'Initializing Wifite...', 'info')
+    log(scan_id, 'Sending deauthentication packets...', 'info')
+    log(scan_id, 'Network is vulnerable to deauthentication attacks', 'warning')
     return """
-[+] Initializing Wifite...
-[+] Setting interface to monitor mode...
-[*] Scanning for target network...
-[+] Target network found
-[*] Sending deauthentication packets...
 [+] Devices successfully disconnected
 [+] Network is vulnerable to deauthentication attacks
 [!] No Management Frame Protection (MFP) detected
 """
 
 def run_hostapd(interface, scan_id):
-    """Simulate evil twin attack — requires wireless adapter"""
+    log(scan_id, 'Initializing Hostapd...', 'info')
+    log(scan_id, 'Creating rogue access point...', 'info')
+    log(scan_id, 'Network is vulnerable to evil twin attacks', 'warning')
     return """
-[+] Initializing Hostapd...
-[*] Creating rogue access point...
 [+] Evil twin access point created successfully
-[*] Broadcasting with same SSID as target network...
 [+] Network is vulnerable to evil twin attacks
 [!] Clients may connect to rogue access point
 """
-
 def store_results(scan_id, module, output):
     """Store scan results and vulnerabilities in database"""
     db = get_db()
@@ -175,18 +180,25 @@ def get_recommendation(vulntype):
     return recommendations.get(vulntype, 'Consult a cybersecurity professional for remediation advice.')
 
 def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
-    """Main scan function — runs selected modules and stores results"""
     db = get_db()
-
-    # Update scan status to running
     db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('running', scan_id))
     db.commit()
     db.close()
 
-    scan_log = []
+    set_phase(scan_id, 'Reconnaissance', 5)
+    log(scan_id, f'Target network: {target_ip}', 'info')
 
-    for module in modules:
-        scan_log.append(f'[+] Starting module: {module}')
+    total = len(modules)
+    for i, module in enumerate(modules):
+        phase_name = {
+            'network_scan': 'Scanning',
+            'wpa2_crack': 'Exploitation',
+            'deauth': 'Exploitation',
+            'evil_twin': 'Exploitation'
+        }.get(module, 'Scanning')
+
+        set_phase(scan_id, phase_name, int(((i) / total) * 80) + 10)
+        log(scan_id, f'Starting module: {module}', 'success')
 
         if module == 'network_scan':
             output = run_nmap(target_ip, scan_id)
@@ -199,15 +211,16 @@ def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
         else:
             output = ''
 
-        scan_log.append(output)
         store_results(scan_id, module, output)
+        set_phase(scan_id, phase_name, int(((i + 1) / total) * 80) + 10)
 
-    # Update scan status to complete
+    set_phase(scan_id, 'Reporting', 100)
+    log(scan_id, 'Scan complete. Generating report...', 'success')
+
     db = get_db()
     db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('complete', scan_id))
     db.commit()
     db.close()
-
     return '\n'.join(scan_log)
 
 def run_scan_background(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):

@@ -104,6 +104,8 @@ def progress():
     return render_template('progress.html')
 
 # Scan status route — called by progress page to check if scan is done
+from scanner import run_scan_background, scan_progress
+
 @app.route('/scan_status')
 def scan_status():
     if 'user' not in session:
@@ -114,12 +116,17 @@ def scan_status():
         return jsonify({'status': 'error'})
 
     db = get_db()
-    scan = db.execute(
-        'SELECT status FROM scans WHERE scan_id = ?', (scan_id,)
-    ).fetchone()
+    scan = db.execute('SELECT status FROM scans WHERE scan_id = ?', (scan_id,)).fetchone()
     db.close()
 
-    return jsonify({'status': scan['status']})
+    progress = scan_progress.get(scan_id, {'phase': 'Reconnaissance', 'percent': 0, 'log': []})
+
+    return jsonify({
+        'status': scan['status'],
+        'phase': progress['phase'],
+        'percent': progress['percent'],
+        'log': progress['log']
+    })
 
 # Results route
 @app.route('/results')
@@ -127,7 +134,7 @@ def results():
     if 'user' not in session:
         return redirect(url_for('login'))
 
-    scan_id = session.get('scan_id')
+    scan_id = request.args.get('scan_id') or session.get('scan_id')
     if not scan_id:
         return redirect(url_for('dashboard'))
 
@@ -135,7 +142,8 @@ def results():
 
     # Get scan info
     scan = db.execute(
-        'SELECT * FROM scans WHERE scan_id = ?', (scan_id,)
+        'SELECT * FROM scans WHERE scan_id = ? AND user_id = ?',
+        (scan_id, session['user_id'])
     ).fetchone()
 
     # Get vulnerabilities with their types
