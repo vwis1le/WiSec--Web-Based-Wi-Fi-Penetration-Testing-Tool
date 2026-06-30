@@ -221,7 +221,6 @@ def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
     db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('complete', scan_id))
     db.commit()
     db.close()
-    return '\n'.join(scan_log)
 
 def run_scan_background(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
     """Run scan in background thread so Flask stays responsive"""

@@ -47,6 +47,14 @@
         <p class="page-subtitle">Choose one or more modules to run against the target network</p>
 
         <form method="POST" action="/modules">
+            <div class="card" style="padding: 16px 20px; margin-bottom: 16px;">
+                <label for="target_ip" style="display:block; margin-bottom:6px; font-size:13px; color:#85B7EB;">
+                    Target network to be tested
+                </label>
+                <input type="text" name="target_ip" id="target_ip"
+                       value="{{ suggested_network }}"
+                       style="width:100%; padding:10px; border-radius:6px; border:1px solid #30363d; background-color:#0d1117; color:#E6F1FB; font-size:14px;">
+            </div>
             <div class="card">
                 <!-- Module 1 -->
                 <label class="module-row">

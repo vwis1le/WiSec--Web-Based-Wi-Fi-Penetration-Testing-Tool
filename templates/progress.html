@@ -53,25 +53,25 @@
 
         <!-- Phase indicators -->
         <div class="phase-grid">
-            <div class="phase-item complete">
+            <div class="phase-item" id="phase-1">
                 <div class="phase-name">Phase 1</div>
                 <div style="color:#484f58;font-size:11px;margin-bottom:4px">Reconnaissance</div>
-                <div class="phase-status complete">✓ Complete</div>
+                <div class="phase-status pending" id="phase-1-status">o Pending</div>
             </div>
-            <div class="phase-item active">
+            <div class="phase-item" id="phase-2">
                 <div class="phase-name">Phase 2</div>
                 <div style="color:#484f58;font-size:11px;margin-bottom:4px">Scanning</div>
-                <div class="phase-status active">● Running</div>
+                <div class="phase-status pending" id="phase-2-status">o Pending</div>
             </div>
-            <div class="phase-item">
+            <div class="phase-item" id="phase-3">
                 <div class="phase-name">Phase 3</div>
                 <div style="color:#484f58;font-size:11px;margin-bottom:4px">Exploitation</div>
-                <div class="phase-status pending">○ Pending</div>
+                <div class="phase-status pending" id="phase-3-status">o Pending</div>
             </div>
-            <div class="phase-item">
+            <div class="phase-item" id="phase-4">
                 <div class="phase-name">Phase 4</div>
                 <div style="color:#484f58;font-size:11px;margin-bottom:4px">Reporting</div>
-                <div class="phase-status pending">○ Pending</div>
+                <div class="phase-status pending" id="phase-4-status">o Pending</div>
             </div>
         </div>
 
@@ -95,17 +95,58 @@
         </a>
     </div>
     <script>
-    // Check scan status every 3 seconds
+    const phaseOrder = ['Reconnaissance', 'Scanning', 'Exploitation', 'Reporting'];
+    let lastLogLength = 0;
+
+    function updatePhases(currentPhase) {
+        const currentIndex = phaseOrder.indexOf(currentPhase);
+        phaseOrder.forEach((phase, i) => {
+            const item = document.getElementById('phase-' + (i + 1));
+            const status = document.getElementById('phase-' + (i + 1) + '-status');
+            item.classList.remove('active', 'complete');
+            if (i < currentIndex) {
+                item.classList.add('complete');
+                status.className = 'phase-status complete';
+                status.textContent = '✓ Complete';
+            } else if (i === currentIndex) {
+                item.classList.add('active');
+                status.className = 'phase-status active';
+                status.textContent = '● Running';
+            } else {
+                status.className = 'phase-status pending';
+                status.textContent = 'o Pending';
+            }
+        });
+    }
+
     const checkStatus = setInterval(() => {
         fetch('/scan_status')
             .then(res => res.json())
             .then(data => {
+                updatePhases(data.phase);
+
+                document.getElementById('progressBar').style.width = data.percent + '%';
+                document.querySelector('.phase-label').textContent =
+                    `Overall progress — ${data.phase}`;
+
+                const terminal = document.getElementById('terminal');
+                const newLines = data.log.slice(lastLogLength);
+                newLines.forEach(entry => {
+                    const div = document.createElement('div');
+                    div.className = 'log-' + entry.level;
+                    div.textContent = (entry.level === 'warning' ? '[~] ' :
+                                        entry.level === 'error' ? '[!] ' : '[+] ') + entry.message;
+                    terminal.appendChild(div);
+                });
+                lastLogLength = data.log.length;
+                terminal.scrollTop = terminal.scrollHeight;
+
                 if (data.status === 'complete') {
                     clearInterval(checkStatus);
-                    window.location.href = '/results';
+                    setTimeout(() => window.location.href = '/results', 1000);
                 }
             });
-    }, 3000);
+    }, 1500);
     </script>
 </body>
 </html>

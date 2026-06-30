@@ -1,7 +1,10 @@
+from scanner import run_scan_background, scan_progress
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from database import get_db
 from scanner import run_scan_background
 import bcrypt
+import socket
+import ipaddress
 
 app = Flask(__name__)
 app.secret_key = 'wifipentool_secret_key'
@@ -64,6 +67,20 @@ def dashboard():
                            total_vulns=total_vulns,
                            total_reports=total_reports)
 
+# Automatically optaining the ip network
+def get_local_subnet():
+    
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))  
+        local_ip = s.getsockname()[0]
+        s.close()
+
+        network = ipaddress.ip_network(f"{local_ip}/24", strict=False)
+        return str(network)
+    except Exception:
+        return "192.168.1.0/24"  
+
 # Module selection route
 @app.route('/modules', methods=['GET', 'POST'])
 def modules():
@@ -71,13 +88,14 @@ def modules():
         return redirect(url_for('login'))
 
     if request.method == 'POST':
+        target_ip = request.form.get('target_ip', '').strip() or get_local_subnet()
         selected_modules = request.form.getlist('modules')
         if selected_modules:
             # Create scan record in database
             db = get_db()
             db.execute(
                 'INSERT INTO scans (user_id, network_name, modules_run, status) VALUES (?, ?, ?, ?)',
-                (session['user_id'], 'Target Network', ', '.join(selected_modules), 'running')
+                (session['user_id'], target_ip, ', '.join(selected_modules), 'running')
             )
             db.commit()
 
@@ -90,11 +108,12 @@ def modules():
             session['selected_modules'] = selected_modules
 
             # Start scan in background thread
-            run_scan_background(scan_id, selected_modules)
+            run_scan_background(scan_id, selected_modules, target_ip=target_ip)
 
             return redirect(url_for('progress'))
-
-    return render_template('modules.html')
+    
+    suggested_network = get_local_subnet()
+    return render_template('modules.html', suggested_network=suggested_network)
 
 # Progress route
 @app.route('/progress')
@@ -104,8 +123,6 @@ def progress():
     return render_template('progress.html')
 
 # Scan status route — called by progress page to check if scan is done
-from scanner import run_scan_background, scan_progress
-
 @app.route('/scan_status')
 def scan_status():
     if 'user' not in session:
