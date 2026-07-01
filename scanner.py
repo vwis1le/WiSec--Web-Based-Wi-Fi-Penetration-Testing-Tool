@@ -20,8 +20,8 @@ def run_nmap(target_ip, scan_id):
     log(scan_id, f'Starting Nmap scan on {target_ip}...', 'success')
     try:
         result = subprocess.run(
-            ['nmap', '-sV', '-oX', '-', target_ip],
-            capture_output=True, text=True, timeout=120
+            ['nmap', '-sV', target_ip],
+            capture_output=True, text=True, timeout=300
         )
         log(scan_id, 'Nmap scan complete.', 'success')
         return result.stdout
@@ -70,29 +70,116 @@ def store_results(scan_id, module, output):
     vulns = []
 
     if module == 'network_scan':
-        # Check for open ports in nmap output
+        lines = output.split('\n')
         open_ports = []
-        for line in output.split('\n'):
+        for line in lines:
             if 'open' in line.lower() and '/tcp' in line.lower():
                 open_ports.append(line.strip())
-    
-        if open_ports:
+
+        for port_line in open_ports:
+            port_lower = port_line.lower()
+
+            # Backdoor services — Critical
+            if 'vsftpd 2.3.4' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'Critical',
+                    'cvss_score': 9.8,
+                    'description': 'vsftpd 2.3.4 detected on port 21 — this version contains a known backdoor (CVE-2011-2523) that allows unauthenticated remote root access.'
+                })
+            elif 'unreal' in port_lower or 'unrealircd' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'Critical',
+                    'cvss_score': 9.8,
+                    'description': 'UnrealIRCd detected — this version contains a known backdoor (CVE-2010-2075) that allows remote code execution.'
+                })
+            elif 'bindshell' in port_lower or '1524' in port_line:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'Critical',
+                    'cvss_score': 10.0,
+                    'description': 'Root shell exposed on port 1524 — a bind shell providing direct unauthenticated root access to the system was detected.'
+                })
+ 
+            # High severity services
+            elif 'telnet' in port_lower:
+                vulns.append({
+                    'vulntype': 'Unencrypted service exposed',
+                    'severity': 'High',
+                    'cvss_score': 7.5,
+                    'description': 'Telnet service detected — Telnet transmits all data including credentials in plaintext, making it trivially interceptable.'
+                })
+            elif 'mysql' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'High',
+                    'cvss_score': 7.5,
+                    'description': f'MySQL database exposed on network: {port_line.strip()} — database services should not be directly accessible from the network.'
+                })
+            elif 'postgresql' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'High',
+                    'cvss_score': 7.5,
+                    'description': f'PostgreSQL database exposed on network: {port_line.strip()} — database services should not be directly accessible from the network.'
+                })
+            elif 'vnc' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'High',
+                    'cvss_score': 7.2,
+                    'description': 'VNC remote desktop service detected — if poorly configured, VNC allows unauthenticated graphical access to the system.'
+                })
+            elif 'rpcbind' in port_lower or 'nfs' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'High',
+                    'cvss_score': 7.5,
+                    'description': f'RPC/NFS service exposed: {port_line.strip()} — these services can expose sensitive file system data if misconfigured.'
+                })
+
+            # Medium severity services
+            elif 'ftp' in port_lower and 'vsftpd 2.3.4' not in port_lower:
+                vulns.append({
+                    'vulntype': 'Unencrypted service exposed',
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
+                    'description': f'FTP service detected: {port_line.strip()} — FTP transmits credentials in plaintext. Use SFTP instead.'
+                })
+            elif 'smtp' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'Medium',
+                    'cvss_score': 5.3,
+                    'description': f'SMTP mail service exposed: {port_line.strip()} — ensure relay is disabled and authentication is enforced.'
+                })
+            elif 'http' in port_lower and 'https' not in port_lower:
+                vulns.append({
+                    'vulntype': 'Unencrypted service exposed',
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
+                    'description': f'Unencrypted HTTP service detected: {port_line.strip()} — use HTTPS to encrypt web traffic.'
+                })
+
+        # Catch-all for any remaining open ports not specifically handled
+        handled_keywords = [
+            'vsftpd 2.3.4', 'unreal', 'bindshell', '1524', 'telnet',
+            'mysql', 'postgresql', 'vnc', 'rpcbind', 'nfs', 'ftp',
+            'smtp', 'http'
+        ]
+        unhandled = [
+            p for p in open_ports
+            if not any(kw in p.lower() or kw in p for kw in handled_keywords)
+        ]
+        if unhandled:
             vulns.append({
                 'vulntype': 'Open port detected',
-                'severity': 'Medium',
-                'cvss_score': 5.3,
-                'description': f'Open ports detected: {", ".join(open_ports)}'
+                'severity': 'Low',
+                'cvss_score': 3.1,
+                'description': f'Additional open ports detected: {", ".join(unhandled)} — review whether these services are necessary.'
             })
-    
-        # Check for unencrypted services
-        if 'http' in output.lower() and 'https' not in output.lower():
-            vulns.append({
-                'vulntype': 'Unencrypted service exposed',
-                'severity': 'Medium',
-                'cvss_score': 5.9,
-                'description': 'Unencrypted HTTP service detected on the network'
-            })
-
+  
     elif module == 'wpa2_crack':
         if 'vulnerable' in output.lower():
             vulns.append({
