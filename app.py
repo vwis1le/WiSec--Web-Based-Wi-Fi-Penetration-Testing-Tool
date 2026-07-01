@@ -9,9 +9,15 @@ from report import generate_report
 from flask import send_file
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
 app.secret_key = 'wifipentool_secret_key'
+
+EAT = timezone(timedelta(hours=3))
+
+def now_eat():
+    return datetime.now(EAT).strftime('%Y-%m-%d %H:%M:%S')
 
 # Login route
 @app.route('/', methods=['GET', 'POST'])
@@ -98,8 +104,8 @@ def modules():
             # Create scan record in database
             db = get_db()
             db.execute(
-                'INSERT INTO scans (user_id, network_name, modules_run, status) VALUES (?, ?, ?, ?)',
-                (session['user_id'], target_ip, ', '.join(selected_modules), 'running')
+                'INSERT INTO scans (user_id, network_name, modules_run, status, timestamp) VALUES (? , ?, ?, ?, ?)',
+                (session['user_id'], target_ip, ', '.join(selected_modules), 'running', now_eat())
             )
             db.commit()
 
