@@ -117,8 +117,12 @@ def modules():
             session['scan_id'] = scan_id
             session['selected_modules'] = selected_modules
 
+            target_ssid = request.form.get('target_ssid', '').strip()
+            session['target_ssid'] = target_ssid
+
             # Start scan in background thread
-            run_scan_background(scan_id, selected_modules, target_ip=target_ip)
+            run_scan_background(scan_id, selected_modules, target_ip=target_ip, target_ssid=target_ssid)
+
 
             return redirect(url_for('progress'))
     

