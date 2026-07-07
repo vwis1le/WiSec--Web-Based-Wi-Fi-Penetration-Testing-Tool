@@ -96,13 +96,15 @@
                     <div class="vuln-name">{{ vuln['vuln_type'] }}</div>
                     <div class="vuln-desc">{{ vuln['description'] }}</div>
                 </div>
-                {% if vuln['severity'] == 'High' %}
+                {% if vuln['cvss_score'] >= 9.0 %}
+                    <span class="badge-high" style="background-color:#7A0C2E;">Critical</span>
+                {% elif vuln['cvss_score'] >= 7.0 %}
                     <span class="badge-high">High</span>
-                {% elif vuln['severity'] == 'Medium' %}
+                {% elif vuln['cvss_score'] >= 4.0 %}
                     <span class="badge-medium">Medium</span>
                 {% else %}
                     <span class="badge-low">Low</span>
-                {% endif %}
+                 {% endif %}
                 <span class="cvss-score">{{ vuln['cvss_score'] }}</span>
                 <div style="font-size:11px;color:#484f58">{{ vuln['recommendation'] }}</div>
             </div>
@@ -122,7 +124,9 @@
             <div>
                 <div class="risk-label">Overall network risk</div>
                 {% set max_cvss = vulns|map(attribute='cvss_score')|max %}
-                {% if max_cvss >= 7.0 %}
+                {% if max_cvss >= 9.0 %}
+                    <div class="risk-value-high" style="color:#E24B4A;">Critical risk</div>
+                {% elif max_cvss >= 7.0 %}
                     <div class="risk-value-high">High risk</div>
                 {% elif max_cvss >= 4.0 %}
                     <div class="risk-value-medium">Medium risk</div>

@@ -157,7 +157,7 @@ def run_aircrack(interface, scan_id, target_ssid=''):
 
     result = subprocess.run(
         ['sudo', 'aircrack-ng', '-w', wordlist, '-b', bssid, cap_path],
-        capture_output=True, text=True, timeout=15
+        capture_output=True, text=True, timeout=120
     )
 
     output = result.stdout + result.stderr
