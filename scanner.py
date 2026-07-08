@@ -130,7 +130,12 @@ def run_aircrack(interface, scan_id, target_ssid=''):
         deauth_cmd += ['-c', client_mac]
     deauth_cmd.append(interface)
 
-    subprocess.run(deauth_cmd, capture_output=True, text=True, timeout=30)
+    try:
+        subprocess.run(deauth_cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        log(scan_id, 'Deauth send timed out — continuing anyway, capture may still succeed.', 'warning')
+    except Exception as e:
+        log(scan_id, f'Deauth send error: {str(e)}', 'error')
 
     # Wait for handshake
     time.sleep(20)
@@ -143,24 +148,39 @@ def run_aircrack(interface, scan_id, target_ssid=''):
         return 'Handshake capture failed'
 
     # Check if handshake was actually captured
-    check = subprocess.run(
-        ['sudo', 'aircrack-ng', cap_path],
-        capture_output=True, text=True, timeout=15
-    )
+    try:
+        check = subprocess.run(
+            ['sudo', 'aircrack-ng', cap_path],
+            capture_output=True, text=True, timeout=15
+        )
+        check_output = check.stdout
+    except subprocess.TimeoutExpired:
+        log(scan_id, 'Handshake check timed out — assuming no handshake captured.', 'warning')
+        return 'Handshake check timed out'
+    except Exception as e:
+        log(scan_id, f'Handshake check error: {str(e)}', 'error')
+        return f'Handshake check error: {str(e)}'
 
-    if 'handshake' not in check.stdout.lower():
+    if 'handshake' not in check_output.lower():
         log(scan_id, 'No handshake captured — no clients reconnected in time.', 'warning')
         return 'No handshake captured'
 
     log(scan_id, 'WPA2 handshake successfully captured.', 'success')
     log(scan_id, 'Running dictionary attack with aircrack-ng...', 'info')
 
-    result = subprocess.run(
-        ['sudo', 'aircrack-ng', '-w', wordlist, '-b', bssid, cap_path],
-        capture_output=True, text=True, timeout=120
-    )
-
-    output = result.stdout + result.stderr
+    try:
+        result = subprocess.run(
+            ['sudo', 'aircrack-ng', '-w', wordlist, '-b', bssid, cap_path],
+            capture_output=True, text=True, timeout=300
+        )
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        log(scan_id, 'Dictionary attack timed out — password not found within time limit.', 'warning')
+        log(scan_id, 'Handshake captured — offline cracking remains possible outside the tool.', 'warning')
+        return '[+] WPA2 handshake captured — dictionary attack timed out (password not cracked in time budget)'
+    except Exception as e:
+        log(scan_id, f'aircrack-ng error: {str(e)}', 'error')
+        return f'aircrack-ng error: {str(e)}'
 
     if 'KEY FOUND' in output:
         for line in output.split('\n'):
@@ -506,46 +526,55 @@ def run_scan(scan_id, modules, target_ip='10.0.2.0/24', interface='wlan0mon', ta
     set_phase(scan_id, 'Reconnaissance', 5)
     log(scan_id, f'Target network: {target_ip}', 'info')
 
-    total = len(modules)
-    for i, module in enumerate(modules):
-        phase_name = {
-            'network_scan': 'Scanning',
-            'wpa2_crack': 'Exploitation',
-            'deauth': 'Exploitation',
-            'evil_twin': 'Exploitation'
-        }.get(module, 'Scanning')
-
-        set_phase(scan_id, phase_name, int(((i) / total) * 80) + 10)
-        log(scan_id, f'Starting module: {module}', 'success')
-
-        if module == 'network_scan':
-            output = run_nmap(target_ip, scan_id)
-        elif module == 'wpa2_crack':
-            output = run_aircrack(interface, scan_id, target_ssid=target_ssid)
-        elif module == 'deauth':
-            output = run_wifite(interface, scan_id)
-        elif module == 'evil_twin':
-            output = run_hostapd(interface, scan_id)
-        else:
-            output = ''
-
-        store_results(scan_id, module, output)
-        set_phase(scan_id, phase_name, int(((i + 1) / total) * 80) + 10)
-
-    set_phase(scan_id, 'Reporting', 100)
-    log(scan_id, 'Scan complete. Generating report...', 'success')
-
-    db = get_db()
-    db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('complete', scan_id))
-    db.commit()
-    db.close()
-
-    log(scan_id, 'Generating PDF report...', 'info')
     try:
-        generate_report(scan_id)
-        log(scan_id, 'Report generated successfully.', 'success')
+        total = len(modules)
+        for i, module in enumerate(modules):
+            phase_name = {
+                'network_scan': 'Scanning',
+                'wpa2_crack': 'Exploitation',
+                'deauth': 'Exploitation',
+                'evil_twin': 'Exploitation'
+            }.get(module, 'Scanning')
+
+            set_phase(scan_id, phase_name, int(((i) / total) * 80) + 10)
+            log(scan_id, f'Starting module: {module}', 'success')
+
+            if module == 'network_scan':
+                output = run_nmap(target_ip, scan_id)
+            elif module == 'wpa2_crack':
+                output = run_aircrack(interface, scan_id, target_ssid=target_ssid)
+            elif module == 'deauth':
+                output = run_wifite(interface, scan_id)
+            elif module == 'evil_twin':
+                output = run_hostapd(interface, scan_id)
+            else:
+                output = ''
+
+            store_results(scan_id, module, output)
+            set_phase(scan_id, phase_name, int(((i + 1) / total) * 80) + 10)
+
+        set_phase(scan_id, 'Reporting', 100)
+        log(scan_id, 'Scan complete. Generating report...', 'success')
+
+        db = get_db()
+        db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('complete', scan_id))
+        db.commit()
+        db.close()
+
+        log(scan_id, 'Generating PDF report...', 'info')
+        try:
+            generate_report(scan_id)
+            log(scan_id, 'Report generated successfully.', 'success')
+        except Exception as e:
+            log(scan_id, f'Report generation failed: {str(e)}', 'error')
+
     except Exception as e:
-        log(scan_id, f'Report generation failed: {str(e)}', 'error')
+        log(scan_id, f'Scan failed: {str(e)}', 'error')
+        set_phase(scan_id, 'Failed', scan_progress.get(scan_id, {}).get('percent', 0))
+        db = get_db()
+        db.execute('UPDATE scans SET status = ? WHERE scan_id = ?', ('failed', scan_id))
+        db.commit()
+        db.close()
 
 def run_scan_background(scan_id, modules, target_ip='10.0.2.0/24', interface='wlan0mon', target_ssid=''):
     """Run scan in background thread so Flask stays responsive"""

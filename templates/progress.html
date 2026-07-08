@@ -89,7 +89,7 @@
             <div class="terminal" id="terminal"></div>
         </div>
     <!-- Temporary button to navigate to results — will be automatic once scanner is hooked up -->
-    <div style="margin-top: 20px;">
+    <div style="margin-top: 20px;" id="results-btn-wrapper" hidden>
         <a href="/results" class="btn-run text-decoration-none d-block text-center" style="background-color:#185FA5; color:#E6F1FB; border:none; padding:12px; border-radius:8px; font-size:14px; font-weight:500;">
             View results →
         </a>
@@ -141,9 +141,15 @@
                 lastLogLength = data.log.length;
                 terminal.scrollTop = terminal.scrollHeight;
 
-                if (data.status === 'complete') {
+                if (data.status === 'complete' || data.status === 'failed') {
                     clearInterval(checkStatus);
-                    setTimeout(() => window.location.href = '/results', 1000);
+                    document.querySelector('.page-title').textContent =
+                        data.status === 'failed' ? 'Scan failed' : 'Scan complete';
+                    document.querySelector('.page-subtitle').textContent =
+                        data.status === 'failed'
+                            ? 'The scan encountered an error. Review the log above.'
+                            : 'Review the log above, then view your results.';
+                    document.getElementById('results-btn-wrapper').hidden = false;
                 }
             });
     }, 1500);
