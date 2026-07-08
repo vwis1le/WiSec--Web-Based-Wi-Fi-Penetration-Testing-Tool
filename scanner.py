@@ -354,13 +354,6 @@ def store_results(scan_id, module, output):
                     'cvss_score': 9.8,
                     'description': 'vsftpd 2.3.4 detected on port 21 — this version contains a known backdoor (CVE-2011-2523) that allows unauthenticated remote root access.'
                 })
-            elif 'unreal' in port_lower or 'unrealircd' in port_lower:
-                vulns.append({
-                    'vulntype': 'Open port detected',
-                    'severity': 'Critical',
-                    'cvss_score': 9.8,
-                    'description': 'UnrealIRCd detected — this version contains a known backdoor (CVE-2010-2075) that allows remote code execution.'
-                })
             elif 'bindshell' in port_lower or '1524' in port_line:
                 vulns.append({
                     'vulntype': 'Open port detected',
@@ -376,6 +369,13 @@ def store_results(scan_id, module, output):
                     'severity': 'High',
                     'cvss_score': 7.5,
                     'description': 'Telnet service detected — Telnet transmits all data including credentials in plaintext, making it trivially interceptable.'
+                })
+            elif 'unreal' in port_lower or 'unrealircd' in port_lower:
+                vulns.append({
+                    'vulntype': 'Open port detected',
+                    'severity': 'High',
+                    'cvss_score': 7.5,
+                    'description': 'UnrealIRCd detected — this version contains a known backdoor (CVE-2010-2075) that allows remote code execution.'
                 })
             elif 'mysql' in port_lower:
                 vulns.append({
