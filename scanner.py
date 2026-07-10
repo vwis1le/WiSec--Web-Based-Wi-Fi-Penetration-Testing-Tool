@@ -362,47 +362,41 @@ def store_results(scan_id, module, output):
                     'description': 'Root shell exposed on port 1524 — a bind shell providing direct unauthenticated root access to the system was detected.'
                 })
  
+            # # Medium severity services — plaintext/unauthenticated exposure ports 
             # High severity services
             elif 'telnet' in port_lower:
                 vulns.append({
                     'vulntype': 'Unencrypted service exposed',
-                    'severity': 'High',
-                    'cvss_score': 7.5,
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
                     'description': 'Telnet service detected — Telnet transmits all data including credentials in plaintext, making it trivially interceptable.'
-                })
-            elif 'unreal' in port_lower or 'unrealircd' in port_lower:
-                vulns.append({
-                    'vulntype': 'Open port detected',
-                    'severity': 'High',
-                    'cvss_score': 7.5,
-                    'description': 'UnrealIRCd detected — this version contains a known backdoor (CVE-2010-2075) that allows remote code execution.'
                 })
             elif 'mysql' in port_lower:
                 vulns.append({
                     'vulntype': 'Open port detected',
-                    'severity': 'High',
-                    'cvss_score': 7.5,
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
                     'description': f'MySQL database exposed on network: {port_line.strip()} — database services should not be directly accessible from the network.'
                 })
             elif 'postgresql' in port_lower:
                 vulns.append({
                     'vulntype': 'Open port detected',
-                    'severity': 'High',
-                    'cvss_score': 7.5,
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
                     'description': f'PostgreSQL database exposed on network: {port_line.strip()} — database services should not be directly accessible from the network.'
                 })
             elif 'vnc' in port_lower:
                 vulns.append({
                     'vulntype': 'Open port detected',
-                    'severity': 'High',
-                    'cvss_score': 7.2,
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
                     'description': 'VNC remote desktop service detected — if poorly configured, VNC allows unauthenticated graphical access to the system.'
                 })
             elif 'rpcbind' in port_lower or 'nfs' in port_lower:
                 vulns.append({
                     'vulntype': 'Open port detected',
-                    'severity': 'High',
-                    'cvss_score': 7.5,
+                    'severity': 'Medium',
+                    'cvss_score': 5.9,
                     'description': f'RPC/NFS service exposed: {port_line.strip()} — these services can expose sensitive file system data if misconfigured.'
                 })
 
